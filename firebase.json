@@ -1,0 +1,38 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "vocaboost-fb",
+          "appId": "1:220073582903:android:5d62ef46528e3d48d47ab2",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "vocaboost-fb",
+          "configurations": {
+            "android": "1:220073582903:android:5d62ef46528e3d48d47ab2",
+            "ios": "1:220073582903:ios:4595810eee1f9f21d47ab2",
+            "macos": "1:220073582903:ios:4595810eee1f9f21d47ab2",
+            "web": "1:220073582903:web:75250b1241e923f5d47ab2",
+            "windows": "1:220073582903:web:56ceca8edc761088d47ab2"
+          }
+        }
+      }
+    }
+  },
+  "functions": {
+    "source": "functions",
+    "predeploy": [
+      "npm --prefix \"$RESOURCE_DIR\" run lint"
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}

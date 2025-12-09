@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "220073582903",
+    "project_id": "vocaboost-fb",
+    "storage_bucket": "vocaboost-fb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:220073582903:android:5d62ef46528e3d48d47ab2",
+        "android_client_info": {
+          "package_name": "com.example.vocaboost"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqMbIr5ZTMMsRWO9MVQ9b9sV-r2gF7fIM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
