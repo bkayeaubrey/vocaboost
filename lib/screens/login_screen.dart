@@ -5,8 +5,15 @@ import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
+  final bool isDarkMode;
+  final Function(bool) onToggleDarkMode;
 
-  const LoginScreen({super.key, this.onLoginSuccess});
+  const LoginScreen({
+    super.key,
+    this.onLoginSuccess,
+    this.isDarkMode = false,
+    required this.onToggleDarkMode,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -17,7 +24,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isDarkMode = false;
 
   // 🎨 Blue Hour Theme Colors
   final Color kLightBackground = const Color(0xFFC7D4E8);
@@ -45,10 +51,8 @@ class _LoginScreenState extends State<LoginScreen> {
             context,
             MaterialPageRoute(
               builder: (context) => DashboardScreen(
-                isDarkMode: _isDarkMode,
-                onToggleDarkMode: (value) {
-                  setState(() => _isDarkMode = value);
-                },
+                isDarkMode: widget.isDarkMode,
+                onToggleDarkMode: widget.onToggleDarkMode,
               ),
             ),
           );
@@ -74,9 +78,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = _isDarkMode ? kDarkBackground : kLightBackground;
-    final textColor = _isDarkMode ? kTextLight : kTextDark;
-    final fieldFill = _isDarkMode ? kDarkCard : Colors.white;
+    final isDark = widget.isDarkMode;
+    final backgroundColor = isDark ? kDarkBackground : kLightBackground;
+    final textColor = isDark ? kTextLight : kTextDark;
+    final fieldFill = isDark ? kDarkCard : Colors.white;
     final primaryColor = kPrimary;
 
     return Scaffold(
@@ -91,11 +96,11 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           IconButton(
             icon: Icon(
-              _isDarkMode ? Icons.light_mode : Icons.dark_mode,
+              widget.isDarkMode ? Icons.light_mode : Icons.dark_mode,
               color: Colors.white,
             ),
             onPressed: () {
-              setState(() => _isDarkMode = !_isDarkMode);
+              widget.onToggleDarkMode(!widget.isDarkMode);
             },
           ),
         ],
@@ -107,9 +112,8 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Image.asset(
-                'assets/logo.png',
+                'assets/logo1.png',
                 height: 100,
-                width: 100,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return Icon(Icons.language, size: 100, color: kAccent);
@@ -130,7 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(color: textColor),
                 decoration: InputDecoration(
                   labelText: 'Email',
-                  labelStyle: TextStyle(color: textColor.withOpacity(0.8)),
+                  labelStyle: TextStyle(color: textColor.withValues(alpha: 0.8)),
                   prefixIcon: Icon(Icons.email, color: kAccent),
                   filled: true,
                   fillColor: fieldFill,
@@ -146,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(color: textColor),
                 decoration: InputDecoration(
                   labelText: 'Password',
-                  labelStyle: TextStyle(color: textColor.withOpacity(0.8)),
+                  labelStyle: TextStyle(color: textColor.withValues(alpha: 0.8)),
                   prefixIcon: Icon(Icons.lock, color: kAccent),
                   filled: true,
                   fillColor: fieldFill,

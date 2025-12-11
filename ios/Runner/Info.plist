@@ -52,5 +52,15 @@
 	<string>This app needs access to your camera to take a profile picture.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app needs access to save photos to your photo library.</string>
+	<!-- Permissions for speech recognition -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app needs access to speech recognition to help you practice pronunciation in the voice quiz.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs access to your microphone to record your pronunciation for the voice quiz.</string>
+	<!-- Permissions for local notifications -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

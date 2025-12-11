@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,7 +7,10 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:vocaboost/screens/login_screen.dart';
 import 'package:vocaboost/screens/dashboard_screen.dart';
 import 'firebase_options.dart';
-import 'package:vocaboost/theme.dart'; 
+import 'package:vocaboost/theme.dart';
+import 'package:vocaboost/services/nlp_model_service.dart';
+import 'package:vocaboost/services/dataset_service.dart';
+import 'package:vocaboost/services/notification_service.dart'; 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +28,30 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final isDarkMode = prefs.getBool('isDarkMode') ?? false;
+
+  // Pre-load dataset in background to avoid loading delays on screens
+  DatasetService.instance.loadDataset().catchError((e) {
+    debugPrint('Warning: Failed to pre-load dataset: $e');
+    // Continue anyway - dataset will load when needed
+  });
+
+  // Pre-load NLP model in background (optional fallback)
+  NLPModelService.instance.loadModel().catchError((e) {
+    debugPrint('Warning: Failed to pre-load NLP model: $e');
+    // Continue anyway - model will load when needed
+  });
+
+  // Initialize notification service
+  NotificationService().initialize().catchError((e) {
+    debugPrint('Warning: Failed to initialize notifications: $e');
+    // Continue anyway - notifications are optional
+  });
+
+  // Set up global error handling without zone issues
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+  };
 
   runApp(VocaBoostApp(initialDarkMode: isDarkMode));
 }
@@ -104,6 +132,8 @@ class AuthWrapper extends StatelessWidget {
 
         // If no user, show login screen
         return LoginScreen(
+          isDarkMode: isDarkMode,
+          onToggleDarkMode: onToggleDarkMode,
           onLoginSuccess: () {
             // This callback is handled by the auth state stream
             // Navigation happens automatically when auth state changes

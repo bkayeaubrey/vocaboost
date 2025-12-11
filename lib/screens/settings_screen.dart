@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:vocaboost/services/feedback_service.dart';
+import 'package:vocaboost/services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool isDarkMode;
@@ -20,11 +22,28 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late bool _darkMode;
   final FeedbackService _feedbackService = FeedbackService();
-
+  final NotificationService _notificationService = NotificationService();
+  bool _notificationsEnabled = true;
+  int _reminderHour = 9;
+  int _reminderMinute = 0;
+  
   @override
   void initState() {
     super.initState();
     _darkMode = widget.isDarkMode;
+    _loadNotificationSettings();
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    final enabled = await _notificationService.areNotificationsEnabled();
+    final time = await _notificationService.getReminderTime();
+    if (mounted) {
+      setState(() {
+        _notificationsEnabled = enabled;
+        _reminderHour = time['hour'] ?? 9;
+        _reminderMinute = time['minute'] ?? 0;
+      });
+    }
   }
 
   @override
@@ -53,18 +72,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(color: kTextLight, fontWeight: FontWeight.bold),
         ),
         backgroundColor: kPrimary,
-        actions: [
-          IconButton(
-            icon: Icon(
-              _darkMode ? Icons.light_mode : Icons.dark_mode,
-              color: kTextLight,
-            ),
-            onPressed: () {
-              setState(() => _darkMode = !_darkMode);
-              widget.onToggleDarkMode(_darkMode);
-            },
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -86,13 +93,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           _buildSettingCard(
-            title: 'Account',
-            subtitle: user?.email ?? 'Not logged in',
-            icon: Icons.account_circle,
+            title: 'Push Notifications',
+            subtitle: _notificationsEnabled ? 'Daily reminder at ${_reminderHour.toString().padLeft(2, '0')}:${_reminderMinute.toString().padLeft(2, '0')}' : 'Disabled',
+            icon: Icons.notifications,
             iconColor: accentColor,
+            trailing: Switch(
+              value: _notificationsEnabled,
+              activeThumbColor: accentColor,
+              onChanged: (value) async {
+                if (value) {
+                  await _notificationService.requestPermissions();
+                }
+                await _notificationService.setNotificationsEnabled(value);
+                setState(() => _notificationsEnabled = value);
+              },
+            ),
             textColor: textColor,
             cardColor: cardColor,
-            trailing: Icon(Icons.chevron_right, color: accentColor),
+            onTap: _notificationsEnabled ? () => _showReminderTimePicker(context, textColor, cardColor, accentColor) : null,
+          ),
+          const SizedBox(height: 12),
+          _buildAccountCard(
+            user: user,
+            textColor: textColor,
+            cardColor: cardColor,
+            accentColor: accentColor,
+            backgroundColor: backgroundColor,
             onTap: () => _showAccountDetails(context, user, textColor, cardColor, accentColor, backgroundColor),
           ),
           const SizedBox(height: 12),
@@ -147,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text(
               'App Version 1.0.0',
               style: TextStyle(
-                color: textColor.withOpacity(0.6),
+                color: textColor.withValues(alpha: 0.6),
                 fontSize: 14,
               ),
             ),
@@ -173,7 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       elevation: _darkMode ? 2 : 4,
-      shadowColor: _darkMode ? Colors.black54 : iconColor.withOpacity(0.2),
+      shadowColor: _darkMode ? Colors.black54 : iconColor.withValues(alpha: 0.2),
 
       child: ListTile(
         leading: Icon(icon, color: iconColor),
@@ -188,13 +214,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: subtitle != null
             ? Text(
                 subtitle,
-                style: TextStyle(color: textColor.withOpacity(0.7)),
+                style: TextStyle(color: textColor.withValues(alpha: 0.7)),
               )
             : null,
         trailing: trailing,
         onTap: onTap,
       ),
     );
+  }
+
+  Widget _buildAccountCard({
+    required User? user,
+    required Color textColor,
+    required Color cardColor,
+    required Color accentColor,
+    required Color backgroundColor,
+    required VoidCallback onTap,
+  }) {
+    return _buildSettingCard(
+      title: 'Account Details',
+      subtitle: user?.email ?? 'Not logged in',
+      icon: Icons.account_circle,
+      iconColor: accentColor,
+      textColor: textColor,
+      cardColor: cardColor,
+      trailing: Icon(Icons.chevron_right, color: accentColor),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _showReminderTimePicker(
+    BuildContext context,
+    Color textColor,
+    Color cardColor,
+    Color accentColor,
+  ) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _reminderHour, minute: _reminderMinute),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: accentColor,
+              onPrimary: Colors.white,
+              surface: cardColor,
+              onSurface: textColor,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      await _notificationService.updateReminderTime(picked.hour, picked.minute);
+      if (mounted) {
+        setState(() {
+          _reminderHour = picked.hour;
+          _reminderMinute = picked.minute;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reminder set for ${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}'),
+            backgroundColor: accentColor,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _showAccountDetails(
@@ -254,6 +341,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Navigator.of(context).pop();
       }
 
+      // Get profile picture URL
+      final profilePictureUrl = userData['profilePictureUrl'] as String?;
+      
       // Show account details dialog
       if (context.mounted) {
         await showDialog(
@@ -283,6 +373,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Avatar
+                    Center(
+                      child: profilePictureUrl != null && profilePictureUrl.isNotEmpty
+                          ? (profilePictureUrl.startsWith('assets/')
+                              ? CircleAvatar(
+                                  radius: 40,
+                                  backgroundColor: Colors.transparent,
+                                  child: ClipOval(
+                                    child: SvgPicture.asset(
+                                      profilePictureUrl,
+                                      width: 80,
+                                      height: 80,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                )
+                              : CircleAvatar(
+                                  radius: 40,
+                                  backgroundImage: NetworkImage(profilePictureUrl),
+                                  backgroundColor: accentColor.withValues(alpha: 0.2),
+                                ))
+                          : CircleAvatar(
+                              radius: 40,
+                              backgroundColor: accentColor,
+                              child: Text(
+                                _getInitialsFromData(fullname, username, email),
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: 24),
                     _buildDetailRow(
                       Icons.person,
                       'Full Name',
@@ -368,7 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 label,
                 style: TextStyle(
-                  color: textColor.withOpacity(0.7),
+                  color: textColor.withValues(alpha: 0.7),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -405,6 +530,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'December'
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  String _getInitialsFromData(String fullname, String username, String email) {
+    if (fullname != 'Not set' && fullname.isNotEmpty) {
+      final parts = fullname.trim().split(' ');
+      if (parts.length >= 2) {
+        return '${parts[0][0]}${parts[parts.length - 1][0]}'.toUpperCase();
+      }
+      return fullname[0].toUpperCase();
+    }
+    if (username != 'Not set' && username.isNotEmpty) {
+      return username[0].toUpperCase();
+    }
+    if (email != 'Not set' && email.isNotEmpty) {
+      return email[0].toUpperCase();
+    }
+    return '?';
   }
 
   Future<void> _showFeedbackDialog(
@@ -449,7 +591,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       'We\'d love to hear from you!',
                       style: TextStyle(
-                        color: textColor.withOpacity(0.8),
+                        color: textColor.withValues(alpha: 0.8),
                         fontSize: 14,
                       ),
                     ),
@@ -469,7 +611,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       initialValue: selectedCategory,
                       decoration: InputDecoration(
                         enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: accentColor.withOpacity(0.5)),
+                          borderSide: BorderSide(color: accentColor.withValues(alpha: 0.5)),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         focusedBorder: OutlineInputBorder(
@@ -522,7 +664,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 : Icons.star_border,
                             color: selectedRating != null && rating <= selectedRating!
                                 ? Colors.amber
-                                : textColor.withOpacity(0.5),
+                                : textColor.withValues(alpha: 0.5),
                             size: 32,
                           ),
                         );
@@ -545,9 +687,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       maxLines: 5,
                       decoration: InputDecoration(
                         hintText: 'Tell us what you think...',
-                        hintStyle: TextStyle(color: textColor.withOpacity(0.5)),
+                        hintStyle: TextStyle(color: textColor.withValues(alpha: 0.5)),
                         enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: accentColor.withOpacity(0.5)),
+                          borderSide: BorderSide(color: accentColor.withValues(alpha: 0.5)),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         focusedBorder: OutlineInputBorder(
@@ -570,7 +712,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                   child: Text(
                     'Cancel',
-                    style: TextStyle(color: textColor.withOpacity(0.7)),
+                    style: TextStyle(color: textColor.withValues(alpha: 0.7)),
                   ),
                 ),
                 ElevatedButton(

@@ -31,7 +31,16 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
-/coverage/
+build/
+coverage/
+node_modules/
+.firebase/
+.firebaserc
+.packages
+*.lock
+linux/flutter/generated_plugin_registrant.cc
+macos/Flutter/GeneratedPluginRegistrant.swift
+windows/flutter/generated_plugin_registrant.cc
 
 # Symbolication related
 app.*.symbols

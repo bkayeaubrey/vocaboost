@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dashboard_screen.dart';
 import 'login_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -53,30 +52,99 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() => _isLoading = true);
     try {
+      // Create user account
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
       final user = userCredential.user;
+      
+      // Stop loading immediately after user creation
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      
+      // Write to Firestore in background (non-blocking)
       if (user != null) {
-        await _firestore.collection('users').doc(user.uid).set({
+        _firestore.collection('users').doc(user.uid).set({
           'fullname': _fullnameController.text.trim(),
           'username': _usernameController.text.trim(),
           'email': _emailController.text.trim(),
           'createdAt': FieldValue.serverTimestamp(),
+        }).catchError((error) {
+          // Log error but don't block UI
+          debugPrint('Error saving user data: $error');
         });
       }
 
+      // Show success dialog immediately (no await delay)
       if (mounted) {
-        if (widget.onSignUpSuccess != null) {
-          widget.onSignUpSuccess!();
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const DashboardScreen()),
-          );
-        }
+        // Get theme colors for dialog
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final dialogCardColor = isDark ? kDarkCard : Colors.white;
+        final dialogTextColor = isDark ? kTextLight : kTextDark;
+        final dialogAccentColor = kAccent;
+        
+        // Show success dialog immediately
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext dialogContext) {
+            return PopScope(
+              canPop: false, // Prevent back button from dismissing
+              child: AlertDialog(
+                backgroundColor: dialogCardColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Success!',
+                        style: TextStyle(
+                          color: dialogTextColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  'You have successfully signed up!',
+                  style: TextStyle(
+                    color: dialogTextColor,
+                    fontSize: 16,
+                  ),
+                ),
+                actions: [
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      // Pop the signup screen so auth state stream can navigate
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                      }
+                      if (widget.onSignUpSuccess != null) {
+                        widget.onSignUpSuccess!();
+                      }
+                      // Navigation will be handled by auth state stream
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: dialogAccentColor,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Continue'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Signup failed. Please try again.';
@@ -86,12 +154,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         message = 'Password should be at least 6 characters.';
       }
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }
@@ -114,9 +179,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Image.asset(
-                'assets/logo.png',
+                'assets/logo1.png',
                 height: 100,
-                width: 100,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return Icon(Icons.language, size: 100, color: accentColor);
@@ -201,17 +265,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               TextButton(
                 onPressed: () {
+                  final isDark = Theme.of(context).brightness == Brightness.dark;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const LoginScreen(),
+                      builder: (context) => LoginScreen(
+                        isDarkMode: isDark,
+                        onToggleDarkMode: (value) {
+                          // Dark mode toggle handled by MaterialApp theme
+                        },
+                      ),
                     ),
                   );
                 },
                 child: Text(
                   'Already have an account? Log in',
                   style: TextStyle(
-                    color: isDark ? kTextLight.withOpacity(0.7) : accentColor,
+                    color: isDark ? kTextLight.withValues(alpha: 0.7) : accentColor,
                   ),
                 ),
               ),
@@ -240,7 +310,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         border: const OutlineInputBorder(),
         filled: true,
         fillColor: fillColor,
-        labelStyle: TextStyle(color: textColor.withOpacity(0.7)),
+        labelStyle: TextStyle(color: textColor.withValues(alpha: 0.7)),
       ),
     );
   }

@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -23,39 +23,39 @@ class UserService {
     }
   }
 
-  /// Upload profile picture to Firebase Storage
-  Future<String> uploadProfilePicture(File imageFile) async {
+  /// Upload profile picture to Firebase Storage (web-compatible using bytes)
+  Future<String> uploadProfilePictureFromBytes(Uint8List imageBytes, String fileName) async {
     final user = _auth.currentUser;
     if (user == null) {
       throw Exception('User not logged in');
     }
 
     try {
-      // Check if file exists
-      if (!await imageFile.exists()) {
-        throw Exception('Image file does not exist');
-      }
-
       // Delete old profile picture if exists
       try {
         final oldRef = _storage.ref('profile_pictures/${user.uid}.jpg');
         await oldRef.delete();
       } catch (e) {
-        // Ignore if file doesn't exist (error code 404)
-        if (e.toString().contains('404') || e.toString().contains('not-found')) {
-          // File doesn't exist, which is fine
-        } else {
-          // Log other errors but continue
-          print('Warning: Could not delete old profile picture: $e');
-        }
+        // Ignore if file doesn't exist
+        print('Warning: Could not delete old profile picture: $e');
       }
 
-      // Upload new profile picture with metadata
+      // Determine content type from file extension
+      String contentType = 'image/jpeg';
+      if (fileName.toLowerCase().endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (fileName.toLowerCase().endsWith('.gif')) {
+        contentType = 'image/gif';
+      } else if (fileName.toLowerCase().endsWith('.webp')) {
+        contentType = 'image/webp';
+      }
+
+      // Upload new profile picture with metadata using putData (web-compatible)
       final ref = _storage.ref('profile_pictures/${user.uid}.jpg');
-      final uploadTask = ref.putFile(
-        imageFile,
+      final uploadTask = ref.putData(
+        imageBytes,
         SettableMetadata(
-          contentType: 'image/jpeg',
+          contentType: contentType,
           customMetadata: {
             'uploadedBy': user.uid,
             'uploadedAt': DateTime.now().toIso8601String(),
@@ -95,8 +95,8 @@ class UserService {
     }
   }
 
-  /// Pick image from gallery or camera
-  Future<File?> pickImage({ImageSource source = ImageSource.gallery}) async {
+  /// Pick image from gallery or camera and return as XFile (web-compatible)
+  Future<XFile?> pickImageAsXFile({ImageSource source = ImageSource.gallery}) async {
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: source,
@@ -105,11 +105,25 @@ class UserService {
         imageQuality: 85,
       );
 
-      if (image == null) return null;
-
-      return File(image.path);
+      return image;
     } catch (e) {
       throw Exception('Failed to pick image: $e');
+    }
+  }
+
+  /// Pick and upload image in one step (web-compatible)
+  Future<String?> pickAndUploadProfilePicture({ImageSource source = ImageSource.gallery}) async {
+    try {
+      final XFile? image = await pickImageAsXFile(source: source);
+      if (image == null) return null;
+
+      // Read image as bytes (works on web)
+      final Uint8List imageBytes = await image.readAsBytes();
+      
+      // Upload using bytes
+      return await uploadProfilePictureFromBytes(imageBytes, image.name);
+    } catch (e) {
+      throw Exception('Failed to pick and upload image: $e');
     }
   }
 
@@ -142,6 +156,161 @@ class UserService {
   Future<String?> getProfilePictureUrl() async {
     final userData = await getUserData();
     return userData?['profilePictureUrl'] as String?;
+  }
+
+  /// Save avatar URL directly (for character/anime avatars)
+  Future<void> saveAvatarUrl(String avatarUrl) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'profilePictureUrl': avatarUrl,
+        'profilePictureUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to save avatar URL: $e');
+    }
+  }
+
+  /// Save current level to Firebase
+  Future<void> saveCurrentLevel(int level) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'currentLevel': level,
+        'levelUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to save level: $e');
+    }
+  }
+
+  /// Get current level from Firebase
+  Future<int> getCurrentLevel() async {
+    final userData = await getUserData();
+    return (userData?['currentLevel'] as int?) ?? 1;
+  }
+
+  /// Save level progress (correct/total counts)
+  Future<void> saveLevelProgress(int level, int correctCount, int totalCount) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'currentLevel': level,
+        'levelCorrectCount': correctCount,
+        'levelTotalCount': totalCount,
+        'levelUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to save level progress: $e');
+    }
+  }
+
+  /// Get level progress from Firebase
+  Future<Map<String, dynamic>> getLevelProgress() async {
+    final userData = await getUserData();
+    return {
+      'level': (userData?['currentLevel'] as int?) ?? 1,
+      'correctCount': (userData?['levelCorrectCount'] as int?) ?? 0,
+      'totalCount': (userData?['levelTotalCount'] as int?) ?? 0,
+      'wordIndex': (userData?['currentWordIndex'] as int?) ?? 0,
+      'learnedWords': (userData?['learnedWordIndices'] as List<dynamic>?) ?? [],
+    };
+  }
+
+  /// Save learned words to Firebase
+  Future<void> saveLearnedWords(List<int> learnedIndices, int currentWordIndex) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'learnedWordIndices': learnedIndices,
+        'currentWordIndex': currentWordIndex,
+        'learnedWordsUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to save learned words: $e');
+    }
+  }
+
+  /// Save current word index to Firebase
+  Future<void> saveCurrentWordIndex(int wordIndex) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'currentWordIndex': wordIndex,
+      });
+    } catch (e) {
+      throw Exception('Failed to save word index: $e');
+    }
+  }
+
+  /// Add word to favorites
+  Future<void> addFavoriteWord(String bisayaWord, String englishWord, String tagalogWord) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'favoriteWords': FieldValue.arrayUnion([{
+          'bisaya': bisayaWord,
+          'english': englishWord,
+          'tagalog': tagalogWord,
+          'addedAt': DateTime.now().toIso8601String(),
+        }]),
+      });
+    } catch (e) {
+      throw Exception('Failed to add favorite word: $e');
+    }
+  }
+
+  /// Remove word from favorites
+  Future<void> removeFavoriteWord(String bisayaWord) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in');
+    }
+
+    try {
+      final userData = await getUserData();
+      final favorites = (userData?['favoriteWords'] as List<dynamic>?) ?? [];
+      final updatedFavorites = favorites.where((fav) => fav['bisaya'] != bisayaWord).toList();
+      
+      await _firestore.collection('users').doc(user.uid).update({
+        'favoriteWords': updatedFavorites,
+      });
+    } catch (e) {
+      throw Exception('Failed to remove favorite word: $e');
+    }
+  }
+
+  /// Get all favorite words
+  Future<List<Map<String, dynamic>>> getFavoriteWords() async {
+    final userData = await getUserData();
+    final favorites = (userData?['favoriteWords'] as List<dynamic>?) ?? [];
+    return favorites.map((fav) => Map<String, dynamic>.from(fav)).toList();
+  }
+
+  /// Check if word is favorited
+  Future<bool> isFavoriteWord(String bisayaWord) async {
+    final favorites = await getFavoriteWords();
+    return favorites.any((fav) => fav['bisaya'] == bisayaWord);
   }
 }
 

@@ -1,11 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:vocaboost/services/spaced_repetition_service.dart';
 
 class TranslationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final SpacedRepetitionService _spacedRepetitionService = SpacedRepetitionService();
 
-  /// Save a translation to Firestore
+  /// Save a translation to Firestore with spaced repetition
   Future<void> saveTranslation({
     required String input,
     required String output,
@@ -16,17 +18,14 @@ class TranslationService {
     if (user == null) return;
 
     try {
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('saved_words')
-          .add({
-        'input': input,
-        'output': output,
-        'fromLanguage': fromLanguage,
-        'toLanguage': toLanguage,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      // Use spaced repetition service to save with review scheduling
+      await _spacedRepetitionService.saveWordForReview(
+        word: input,
+        translation: output,
+        fromLanguage: fromLanguage,
+        toLanguage: toLanguage,
+        quality: 3, // Default quality for new words
+      );
     } catch (e) {
       throw Exception('Failed to save translation: $e');
     }

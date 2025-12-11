@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+const axios = require('axios');
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -9,10 +10,11 @@ admin.initializeApp();
 // Note: You'll need to set up email credentials in Firebase Functions config
 // For Gmail, you can use an App Password
 const getEmailTransporter = () => {
-  const emailUser = functions.config().email?.user;
-  const emailPassword = functions.config().email?.password;
-  const emailService = functions.config().email?.service || 'gmail';
-  const adminEmail = functions.config().email?.admin || emailUser;
+  const emailConfig = functions.config().email || {};
+  const emailUser = emailConfig.user;
+  const emailPassword = emailConfig.password;
+  const emailService = emailConfig.service || 'gmail';
+  const adminEmail = emailConfig.admin || emailUser;
 
   if (!emailUser || !emailPassword) {
     console.warn('Email configuration not set. Feedback notifications will not be sent.');
@@ -61,7 +63,7 @@ Feedback Message:
 ${feedbackData.message}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Submitted: ${feedbackData.timestamp?.toDate?.() || new Date().toISOString()}
+Submitted: ${feedbackData.timestamp && feedbackData.timestamp.toDate ? feedbackData.timestamp.toDate() : new Date().toISOString()}
 App Version: ${feedbackData.appVersion || 'Unknown'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -73,10 +75,11 @@ https://console.firebase.google.com/project/${process.env.GCLOUD_PROJECT}/firest
       const transporter = getEmailTransporter();
       if (transporter) {
         try {
-          const adminEmail = functions.config().email?.admin || functions.config().email?.user;
+          const emailConfig = functions.config().email || {};
+          const adminEmail = emailConfig.admin || emailConfig.user;
           
           await transporter.sendMail({
-            from: `VocaBoost Feedback <${functions.config().email?.user}>`,
+            from: `VocaBoost Feedback <${emailConfig.user}>`,
             to: adminEmail,
             subject: emailSubject,
             text: emailBody,
@@ -102,7 +105,7 @@ https://console.firebase.google.com/project/${process.env.GCLOUD_PROJECT}/firest
                 </div>
                 
                 <p style="color: #666; font-size: 12px; margin-top: 20px;">
-                  Submitted: ${feedbackData.timestamp?.toDate?.() || new Date().toISOString()}<br>
+                  Submitted: ${feedbackData.timestamp && feedbackData.timestamp.toDate ? feedbackData.timestamp.toDate() : new Date().toISOString()}<br>
                   App Version: ${feedbackData.appVersion || 'Unknown'}
                 </p>
                 
@@ -129,7 +132,7 @@ https://console.firebase.google.com/project/${process.env.GCLOUD_PROJECT}/firest
       if (feedbackData.userEmail && transporter) {
         try {
           await transporter.sendMail({
-            from: `VocaBoost <${functions.config().email?.user}>`,
+            from: `VocaBoost <${emailConfig.user}>`,
             to: feedbackData.userEmail,
             subject: 'Thank you for your feedback!',
             text: `
@@ -216,5 +219,85 @@ exports.getFeedbackStats = functions.https.onRequest(async (req, res) => {
   }
 });
 
+/**
+ * OpenAI API Proxy for Word Vocabulary
+ * Securely handles OpenAI API calls from the PWA
+ */
+exports.openaiProxy = functions.https.onRequest(async (req, res) => {
+  // Enable CORS
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    res.status(405).json({error: 'Method not allowed'});
+    return;
+  }
+
+  try {
+    const { messages, model = 'gpt-3.5-turbo', temperature = 0.7 } = req.body;
+
+    console.log('[openaiProxy] Request received:', {
+      model,
+      messageCount: messages?.length,
+      temperature,
+      firstMessageContent: messages?.[0]?.content?.substring(0, 100),
+    });
+
+    if (!messages || !Array.isArray(messages)) {
+      console.error('[openaiProxy] Invalid request: messages is not an array');
+      res.status(400).json({error: 'Invalid request: messages array required'});
+      return;
+    }
+
+    const openaiConfig = functions.config().openai || {};
+    const apiKey = openaiConfig.apikey;
+    if (!apiKey) {
+      console.error('[openaiProxy] OpenAI API key not configured');
+      res.status(500).json({error: 'OpenAI API key not configured'});
+      return;
+    }
+
+    console.log('[openaiProxy] Calling OpenAI API with model:', model);
+    const response = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model,
+        messages,
+        temperature,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    console.log('[openaiProxy] OpenAI response status:', response.status);
+    const responseContent = response.data?.choices?.[0]?.message?.content?.substring(0, 200);
+    console.log('[openaiProxy] Response content preview:', responseContent);
+
+    res.json(response.data);
+  } catch (error) {
+    const errorData = error.response && error.response.data ? error.response.data : null;
+    const errorMessage = errorData && errorData.error && errorData.error.message ? errorData.error.message : 'Failed to call OpenAI API';
+    const errorStatus = error.response && error.response.status ? error.response.status : 500;
+    
+    console.error('[openaiProxy] Error status:', errorStatus);
+    console.error('[openaiProxy] Error data:', errorData);
+    console.error('[openaiProxy] Full error:', error.message);
+    
+    res.status(errorStatus).json({
+      error: errorMessage,
+      status: errorStatus,
+    });
+  }
+});
 
 

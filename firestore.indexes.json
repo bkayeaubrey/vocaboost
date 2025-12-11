@@ -1,5 +1,30 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "saved_words",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "nextReviewDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "saved_words",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fromLanguage",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextReviewDate",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
 

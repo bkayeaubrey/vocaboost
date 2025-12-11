@@ -171,13 +171,18 @@ class ProgressService {
             final correctIndex = question['correct'] as int? ?? -1;
             final answers = question['answers'] as List<dynamic>? ?? [];
 
-            final questionText = question['question'] as String? ?? '';
-            if (questionText.isNotEmpty && questionText.contains('"')) {
-              final match = RegExp(r'"([^"]+)"').firstMatch(questionText);
-              word = match?.group(1)?.toLowerCase();
-            } else if (correctIndex >= 0 &&
-                correctIndex < answers.length) {
-              word = (answers[correctIndex] as String?)?.toLowerCase();
+            // Prefer bisayaWord field if available (for top words display)
+            if (question.containsKey('bisayaWord')) {
+              word = (question['bisayaWord'] as String?)?.toLowerCase();
+            } else {
+              final questionText = question['question'] as String? ?? '';
+              if (questionText.isNotEmpty && questionText.contains('"')) {
+                final match = RegExp(r'"([^"]+)"').firstMatch(questionText);
+                word = match?.group(1)?.toLowerCase();
+              } else if (correctIndex >= 0 &&
+                  correctIndex < answers.length) {
+                word = (answers[correctIndex] as String?)?.toLowerCase();
+              }
             }
 
             isCorrect = selectedAnswer == correctIndex;
@@ -278,6 +283,37 @@ class ProgressService {
       return result;
     } catch (e) {
       throw Exception('Failed to get all progress data: $e');
+    }
+  }
+
+  /// Get progressive learning statistics
+  Future<Map<String, dynamic>> getProgressiveLearningStats() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      return {
+        'currentLevel': 1,
+        'currentWordIndex': 0,
+        'learnedWordsCount': 0,
+        'learnedWordIndices': <int>[],
+        'levelCorrectCount': 0,
+        'levelTotalCount': 0,
+      };
+    }
+
+    try {
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      final data = doc.data() ?? {};
+      
+      return {
+        'currentLevel': data['currentLevel'] ?? 1,
+        'currentWordIndex': data['currentWordIndex'] ?? 0,
+        'learnedWordsCount': (data['learnedWordIndices'] as List<dynamic>?)?.length ?? 0,
+        'learnedWordIndices': (data['learnedWordIndices'] as List<dynamic>?)?.cast<int>() ?? <int>[],
+        'levelCorrectCount': data['levelCorrectCount'] ?? 0,
+        'levelTotalCount': data['levelTotalCount'] ?? 0,
+      };
+    } catch (e) {
+      throw Exception('Failed to get progressive learning stats: $e');
     }
   }
   
@@ -443,15 +479,20 @@ class ProgressService {
             final correctIndex = question['correct'] as int? ?? -1;
             final answers = question['answers'] as List<dynamic>? ?? [];
             
-            // Extract word from question text or correct answer
-            final questionText = question['question'] as String? ?? '';
-            if (questionText.contains('"')) {
-              // Extract word from quotes
-              final match = RegExp(r'"([^"]+)"').firstMatch(questionText);
-              word = match?.group(1)?.toLowerCase();
-            } else if (correctIndex >= 0 && correctIndex < answers.length) {
-              // Use the correct answer as the word
-              word = (answers[correctIndex] as String?)?.toLowerCase();
+            // Prefer bisayaWord field if available (for top words display)
+            if (question.containsKey('bisayaWord')) {
+              word = (question['bisayaWord'] as String?)?.toLowerCase();
+            } else {
+              // Extract word from question text or correct answer
+              final questionText = question['question'] as String? ?? '';
+              if (questionText.contains('"')) {
+                // Extract word from quotes
+                final match = RegExp(r'"([^"]+)"').firstMatch(questionText);
+                word = match?.group(1)?.toLowerCase();
+              } else if (correctIndex >= 0 && correctIndex < answers.length) {
+                // Use the correct answer as the word
+                word = (answers[correctIndex] as String?)?.toLowerCase();
+              }
             }
             
             isCorrect = selectedAnswer == correctIndex;

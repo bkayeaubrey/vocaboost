@@ -16,6 +16,7 @@ class QuizService {
     if (user == null) return;
 
     try {
+      final now = DateTime.now();
       await _firestore
           .collection('users')
           .doc(user.uid)
@@ -27,7 +28,9 @@ class QuizService {
         'questions': questions,
         'selectedAnswers': selectedAnswers,
         'timestamp': FieldValue.serverTimestamp(),
-        'date': DateTime.now().toIso8601String(),
+        'date': now.toIso8601String(),
+        'dateString': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        'timeString': '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}',
       });
     } catch (e) {
       throw Exception('Failed to save quiz result: $e');
@@ -97,6 +100,65 @@ class QuizService {
       };
     } catch (e) {
       throw Exception('Failed to get quiz statistics: $e');
+    }
+  }
+
+  /// Get total number of quizzes completed
+  Future<int> getTotalQuizzesCompleted() async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('quiz_results')
+          .count()
+          .get();
+      
+      return snapshot.count ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Get count of perfect quizzes (100% score)
+  Future<int> getPerfectQuizCount() async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('quiz_results')
+          .where('percentage', isEqualTo: 100)
+          .count()
+          .get();
+      
+      return snapshot.count ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Get count of voice exercises completed
+  Future<int> getVoiceExercisesCount() async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    try {
+      // Count all quiz results (voice exercises are tracked as quiz results)
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('quiz_results')
+          .count()
+          .get();
+      
+      return snapshot.count ?? 0;
+    } catch (e) {
+      return 0;
     }
   }
 }
